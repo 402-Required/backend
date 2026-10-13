@@ -1,8 +1,12 @@
 spring:
   application:
-    name: demo
+    name: LoopCut
   profiles:
     active: local
+
+jwt:
+  secret: ${JWT_SECRET:dev-only-secret-key-change-me-please-32bytes-min}
+  expiration: ${JWT_EXPIRATION:3600000}
 
 ---
 spring:
@@ -32,14 +36,17 @@ spring:
     activate:
       on-profile: prod
   datasource:
-    url: jdbc:mysql://localhost:3306/demo?useSSL=false&serverTimezone=UTC&characterEncoding=UTF-8
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:}
+    url: ${DB_URL}
+    driver-class-name: org.postgresql.Driver
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
   jpa:
     hibernate:
       ddl-auto: validate
     show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
 management:
   endpoints:

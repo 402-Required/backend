@@ -23,10 +23,15 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
+	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6")
+	implementation("org.springframework.security:spring-security-crypto")
+	implementation("io.jsonwebtoken:jjwt-api:0.12.6")
+	runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")
+	runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.6")
 	compileOnly("org.projectlombok:lombok")
 	developmentOnly("org.springframework.boot:spring-boot-devtools")
 	runtimeOnly("com.h2database:h2")
-	runtimeOnly("com.mysql:mysql-connector-j")
+	runtimeOnly("org.postgresql:postgresql:42.7.7")
 	annotationProcessor("org.projectlombok:lombok")
 	testImplementation("org.springframework.boot:spring-boot-starter-actuator-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-data-jpa-test")
@@ -39,4 +44,17 @@ dependencies {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+}
+
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+	val envFile = file(".env")
+	if (envFile.exists()) {
+		envFile.readLines()
+			.map { it.trim() }
+			.filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+			.forEach { line ->
+				val (key, value) = line.split("=", limit = 2)
+				environment(key.trim(), value.trim())
+			}
+	}
 }
