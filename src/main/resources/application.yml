@@ -1,52 +1,27 @@
 spring:
   application:
     name: LoopCut
-  profiles:
-    active: local
-
-jwt:
-  secret: ${JWT_SECRET:dev-only-secret-key-change-me-please-32bytes-min}
-  expiration: ${JWT_EXPIRATION:3600000}
-
----
-spring:
-  config:
-    activate:
-      on-profile: local
-  datasource:
-    url: jdbc:h2:mem:demodb
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
-
----
-spring:
-  config:
-    activate:
-      on-profile: prod
   datasource:
     url: ${DB_URL}
     driver-class-name: org.postgresql.Driver
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:1800000}
+
+refresh-token:
+  expires-days: ${REFRESH_TOKEN_EXPIRES_DAYS:30}
+
+terms:
+  version: ${TERMS_VERSION:2026-11-01}
+
+google:
+  web-client-id: ${GOOGLE_WEB_CLIENT_ID:}
+
+firebase:
+  service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
 
 management:
   endpoints:

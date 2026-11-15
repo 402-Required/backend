@@ -1,5 +1,7 @@
 package com.example.loopcut.auth;
 
+import com.example.loopcut.common.BusinessException;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -21,24 +23,28 @@ public class JwtTokenProvider {
         this.expirationMillis = expirationMillis;
     }
 
-    public String createToken(String email) {
+    /** payload는 { sub: userId } */
+    public String createToken(long userId) {
         Date now = new Date();
-        Date expiry = new Date(now.getTime() + expirationMillis);
-
         return Jwts.builder()
-                .subject(email)
+                .subject(Long.toString(userId))
                 .issuedAt(now)
-                .expiration(expiry)
+                .expiration(new Date(now.getTime() + expirationMillis))
                 .signWith(key)
                 .compact();
     }
 
-    public String getEmail(String token) {
-        return Jwts.parser()
-                .verifyWith(key)
-                .build()
-                .parseSignedClaims(token)
-                .getPayload()
-                .getSubject();
+    public long parseUserId(String token) {
+        try {
+            String subject = Jwts.parser()
+                    .verifyWith(key)
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload()
+                    .getSubject();
+            return Long.parseLong(subject);
+        } catch (JwtException | IllegalArgumentException e) {
+            throw BusinessException.unauthorized("UNAUTHORIZED", "로그인이 필요해요.");
+        }
     }
 }
