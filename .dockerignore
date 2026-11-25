@@ -1,0 +1,11 @@
+.git
+.github
+.gradle
+.vscode
+build
+bin
+.env
+sql
+HELP.md
+README.md
+*.md
