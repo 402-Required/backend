@@ -82,7 +82,7 @@ public class AuthService {
         recordConsents(id, consents);
         createDefaultNotificationSettings(id);
 
-        return result(new UserRow(id, req.email().trim(), req.name().trim(), null, null), req.deviceName(), true);
+        return result(new UserRow(id, req.email().trim(), req.name().trim(), null, null),true);
     }
 
     @Transactional
@@ -92,7 +92,7 @@ public class AuthService {
                 || !passwordEncoder.matches(req.password(), user.passwordHash())) {
             throw BusinessException.unauthorized("INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않아요.");
         }
-        return result(user, req.deviceName(), false);
+        return result(user,false);
     }
 
     // ------------------------------------------------------------------ google
@@ -109,7 +109,7 @@ public class AuthService {
                 .optional()
                 .orElse(null);
         if (user != null) {
-            return result(user, req.deviceName(), false);
+            return result(user,false);
         }
 
         if (profile.emailVerified()) {
@@ -120,7 +120,7 @@ public class AuthService {
                 }
                 jdbc.sql("UPDATE users SET google_sub = :sub WHERE id = :id")
                         .param("sub", profile.sub()).param("id", sameEmail.id()).update();
-                return result(sameEmail, req.deviceName(), false);
+                return result(sameEmail,false);
             }
         }
 
@@ -137,7 +137,7 @@ public class AuthService {
         long id = insertUser(profile.email(), null, profile.sub(), name);
         recordConsents(id, req.consents());
         createDefaultNotificationSettings(id);
-        return result(new UserRow(id, profile.email(), name, null, profile.sub()), req.deviceName(), true);
+        return result(new UserRow(id, profile.email(), name, null, profile.sub()),true);
     }
 
     // ------------------------------------------------------------------ refresh / logout
@@ -146,12 +146,12 @@ public class AuthService {
         String hash = sha256(rawToken);
         RefreshOutcome outcome = tx.execute(status -> {
             var row = jdbc.sql("""
-                            SELECT id, user_id, device_name, revoked_at, (expires_at <= now()) AS expired
+                            SELECT id, user_id, revoked_at, (expires_at <= now()) AS expired
                             FROM refresh_tokens WHERE token_hash = :h FOR UPDATE
                             """)
                     .param("h", hash)
                     .query((rs, n) -> new Object[]{rs.getLong("id"), rs.getLong("user_id"),
-                            rs.getString("device_name"), rs.getObject("revoked_at") != null, rs.getBoolean("expired")})
+                            rs.getObject("revoked_at") != null, rs.getBoolean("expired")})
                     .optional()
                     .orElse(null);
             if (row == null) {
@@ -159,8 +159,8 @@ public class AuthService {
             }
             long tokenId = (Long) row[0];
             long userId = (Long) row[1];
-            boolean revoked = (Boolean) row[3];
-            boolean expired = (Boolean) row[4];
+            boolean revoked = (Boolean) row[2];
+            boolean expired = (Boolean) row[3];
 
             if (revoked) {
                 // 이미 사용된 토큰의 재사용 = 탈취로 간주 → 이 사용자의 모든 refresh token 폐기
@@ -173,7 +173,7 @@ public class AuthService {
             }
             jdbc.sql("UPDATE refresh_tokens SET revoked_at = now(), last_used_at = now() WHERE id = :id")
                     .param("id", tokenId).update();
-            return new RefreshOutcome(userId, insertRefreshToken(userId, (String) row[2]));
+            return new RefreshOutcome(userId, insertRefreshToken(userId));
         });
 
         if (outcome == null || outcome.userId() == null) {
@@ -190,8 +190,8 @@ public class AuthService {
 
     // ------------------------------------------------------------------ internals
 
-    private AuthResult result(UserRow user, String deviceName, boolean isNew) {
-        String refresh = insertRefreshToken(user.id(), deviceName);
+    private AuthResult result(UserRow user, boolean isNew) {
+        String refresh = insertRefreshToken(user.id());
         return new AuthResult(jwt.createToken(user.id()), refresh,
                 new UserSummary(Db.id(user.id()), user.email(), user.name()), isNew);
     }
@@ -228,15 +228,15 @@ public class AuthService {
         jdbc.sql("INSERT INTO notification_settings (user_id) VALUES (:uid)").param("uid", userId).update();
     }
 
-    private String insertRefreshToken(long userId, String deviceName) {
+    private String insertRefreshToken(long userId) {
         byte[] bytes = new byte[32];
         RANDOM.nextBytes(bytes);
         String raw = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         jdbc.sql("""
-                        INSERT INTO refresh_tokens (user_id, token_hash, device_name, expires_at, last_used_at)
-                        VALUES (:uid, :h, :device, :exp, now())
+                        INSERT INTO refresh_tokens (user_id, token_hash, expires_at, last_used_at)
+                        VALUES (:uid, :h, :exp, now())
                         """)
-                .param("uid", userId).param("h", sha256(raw)).param("device", deviceName)
+                .param("uid", userId).param("h", sha256(raw))
                 .param("exp", OffsetDateTime.now().plusDays(refreshDays))
                 .update();
         return raw;

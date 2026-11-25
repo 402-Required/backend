@@ -19,7 +19,6 @@
 | `JWT_SECRET` | access token 서명 키 (32바이트 이상) |
 | `JWT_EXPIRATION` | access token 만료(ms), 기본 1800000 (30분) |
 | `GOOGLE_WEB_CLIENT_ID` | 구글 로그인 ID 토큰 검증용 **서버(Web) 클라이언트 ID** |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | FCM 서비스 계정 JSON 전체 (없으면 푸시는 로그로만 남김) |
 | `TERMS_VERSION` | 약관 버전, 기본 2026-11-01 |
 
 DB 준비 순서 (Neon SQL Editor):

@@ -24,20 +24,17 @@ public final class AuthDtos {
             @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d).{8,64}$",
                     message = "비밀번호는 8~64자, 영문과 숫자를 포함해야 해요.") String password,
             @NotBlank(message = "이름을 입력해 주세요.") @Size(max = 50, message = "이름은 50자 이하로 입력해 주세요.") String name,
-            @NotNull(message = "약관 동의 정보가 필요해요.") @Valid Consents consents,
-            @Size(max = 100) String deviceName) {
+            @NotNull(message = "약관 동의 정보가 필요해요.") @Valid Consents consents) {
     }
 
     public record LoginRequest(
             @NotBlank(message = "이메일을 입력해 주세요.") String email,
-            @NotBlank(message = "비밀번호를 입력해 주세요.") String password,
-            @Size(max = 100) String deviceName) {
+            @NotBlank(message = "비밀번호를 입력해 주세요.") String password) {
     }
 
     public record GoogleRequest(
             @NotBlank(message = "idToken이 필요해요.") String idToken,
-            Consents consents,
-            @Size(max = 100) String deviceName) {
+            Consents consents) {
     }
 
     public record RefreshRequest(@NotBlank(message = "refreshToken이 필요해요.") String refreshToken) {

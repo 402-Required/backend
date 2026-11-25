@@ -17,14 +17,11 @@ public class BudgetAlertService {
     private final JdbcClient jdbc;
     private final SpendingService spending;
     private final NotificationService notifications;
-    private final PushService push;
 
-    public BudgetAlertService(JdbcClient jdbc, SpendingService spending, NotificationService notifications,
-                              PushService push) {
+    public BudgetAlertService(JdbcClient jdbc, SpendingService spending, NotificationService notifications) {
         this.jdbc = jdbc;
         this.spending = spending;
         this.notifications = notifications;
-        this.push = push;
     }
 
     /** 알림 실패가 구독 등록 같은 본 작업을 실패시키지 않도록 예외를 삼킨다. */
@@ -39,13 +36,13 @@ public class BudgetAlertService {
     public void check(long userId) {
         var row = jdbc.sql("""
                         SELECT u.monthly_budget, u.budget_alert_ratio,
-                               COALESCE(ns.budget_alert_enabled, true) AS enabled, COALESCE(ns.push_enabled, true) AS push
+                               COALESCE(ns.budget_alert_enabled, true) AS enabled
                         FROM users u LEFT JOIN notification_settings ns ON ns.user_id = u.id
                         WHERE u.id = :uid
                         """)
                 .param("uid", userId)
                 .query((rs, n) -> new Object[]{rs.getObject("monthly_budget") == null ? null : rs.getInt("monthly_budget"),
-                        rs.getInt("budget_alert_ratio"), rs.getBoolean("enabled"), rs.getBoolean("push")})
+                        rs.getInt("budget_alert_ratio"), rs.getBoolean("enabled")})
                 .optional().orElse(null);
         if (row == null || row[0] == null || !(Boolean) row[2]) {
             return;
@@ -73,8 +70,5 @@ public class BudgetAlertService {
         String title = "이번 달 구독 지출이 예산의 " + ratio + "%예요";
         String body = String.format("예상 지출 %,d원 / 월 예산 %,d원", expected, budget);
         notifications.insert(userId, null, "budget_warning", title, body, null, null);
-        if ((Boolean) row[3]) {
-            push.sendToUser(userId, title, body);
-        }
     }
 }

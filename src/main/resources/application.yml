@@ -23,8 +23,6 @@ terms:
 google:
   web-client-id: ${GOOGLE_WEB_CLIENT_ID:}
 
-firebase:
-  service-account-json: ${FIREBASE_SERVICE_ACCOUNT_JSON:}
 
 management:
   endpoints:

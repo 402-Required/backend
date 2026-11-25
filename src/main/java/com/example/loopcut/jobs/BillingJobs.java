@@ -3,7 +3,6 @@ package com.example.loopcut.jobs;
 import com.example.loopcut.common.Kst;
 import com.example.loopcut.notifications.BudgetAlertService;
 import com.example.loopcut.notifications.NotificationService;
-import com.example.loopcut.notifications.PushService;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -34,7 +33,7 @@ public class BillingJobs {
     private static final long LOCK_CLEANUP = 402_003L;
 
     record Reminder(long userId, long subscriptionId, String name, int amount, int daysBefore,
-                            String paymentMethodName, boolean push, boolean email, LocalDate target) {
+                    String paymentMethodName, LocalDate target) {
 
         String title() {
             return reminderTitle(daysBefore, name);
@@ -49,15 +48,13 @@ public class BillingJobs {
     private final JdbcClient jdbc;
     private final TransactionTemplate tx;
     private final NotificationService notifications;
-    private final PushService push;
     private final BudgetAlertService budgetAlerts;
 
     public BillingJobs(JdbcClient jdbc, PlatformTransactionManager txManager, NotificationService notifications,
-                       PushService push, BudgetAlertService budgetAlerts) {
+                       BudgetAlertService budgetAlerts) {
         this.jdbc = jdbc;
         this.tx = new TransactionTemplate(txManager);
         this.notifications = notifications;
-        this.push = push;
         this.budgetAlerts = budgetAlerts;
     }
 
@@ -113,28 +110,17 @@ public class BillingJobs {
 
     // ------------------------------------------------------------------ 10.2 결제 알림 (10분마다)
 
+    /** 푸시/이메일 발송 없이 알림함(notifications)에만 기록한다. 유니크 인덱스 덕분에 중복 기록되지 않는다. */
     @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Seoul")
-    public void sendReminders() {
+    public void createReminders() {
         List<Reminder> inserted = tx.execute(status -> {
             if (!tryLock(LOCK_SEND_REMINDERS)) {
                 return null;
             }
             return insertDueReminders(Kst.today(), Kst.nowTime());
         });
-        if (inserted == null) {
-            return;
-        }
-        // 실제로 INSERT된 알림만 발송하므로 중복 발송이 없다 (커밋 후 발송: 최대 1회 전달)
-        for (Reminder r : inserted) {
-            if (r.push()) {
-                push.sendToUser(r.userId(), r.title(), r.body());
-            }
-            if (r.email()) {
-                push.sendEmail(r.userId(), r.title(), r.body());
-            }
-        }
-        if (!inserted.isEmpty()) {
-            log.info("결제 알림 {}건 발송", inserted.size());
+        if (inserted != null && !inserted.isEmpty()) {
+            log.info("결제 알림 {}건 생성", inserted.size());
         }
     }
 
@@ -147,8 +133,7 @@ public class BillingJobs {
      */
     List<Reminder> insertDueReminders(LocalDate today, LocalTime now) {
         List<Reminder> candidates = jdbc.sql("""
-                        SELECT s.user_id, s.id AS sid, s.name, s.amount, d.days_before, pm.name AS pm_name,
-                               ns.push_enabled, ns.email_enabled
+                        SELECT s.user_id, s.id AS sid, s.name, s.amount, d.days_before, pm.name AS pm_name
                         FROM subscriptions s
                         JOIN notification_settings ns ON ns.user_id = s.user_id AND ns.billing_alert_enabled
                         CROSS JOIN LATERAL unnest(COALESCE(s.notify_days_before, ns.days_before)) AS d(days_before)
@@ -163,8 +148,7 @@ public class BillingJobs {
                 .query((rs, n) -> {
                     int days = rs.getInt("days_before");
                     return new Reminder(rs.getLong("user_id"), rs.getLong("sid"), rs.getString("name"),
-                            rs.getInt("amount"), days, rs.getString("pm_name"), rs.getBoolean("push_enabled"),
-                            rs.getBoolean("email_enabled"), today.plusDays(days));
+                            rs.getInt("amount"), days, rs.getString("pm_name"), today.plusDays(days));
                 })
                 .list();
 
@@ -199,8 +183,7 @@ public class BillingJobs {
                             WHERE expires_at < now() OR revoked_at < now() - interval '30 days'
                             """).update();
             int notis = jdbc.sql("DELETE FROM notifications WHERE sent_at < now() - interval '180 days'").update();
-            int devices = jdbc.sql("DELETE FROM device_tokens WHERE last_seen_at < now() - interval '90 days'").update();
-            log.info("정리 배치: refresh_tokens {}건, notifications {}건, device_tokens {}건 삭제", tokens, notis, devices);
+            log.info("정리 배치: refresh_tokens {}건, notifications {}건 삭제", tokens, notis);
         });
     }
 
