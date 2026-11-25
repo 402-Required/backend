@@ -21,16 +21,12 @@ public record SubscriptionView(
         Long dDay,
         String status,
         String usageStatus,
-        PaymentMethodRef paymentMethod,
         boolean notifyEnabled,
         List<Integer> notifyDaysBefore,
         List<Integer> effectiveNotifyDaysBefore,
         String memo,
         LocalDate canceledAt,
         String createdAt) {
-
-    public record PaymentMethodRef(String id, String name, String last4) {
-    }
 
     /** 월 환산 금액: 월 구독은 amount, 연 구독은 round(amount / 12) */
     public static int monthlyAmount(int amount, String billingCycle) {

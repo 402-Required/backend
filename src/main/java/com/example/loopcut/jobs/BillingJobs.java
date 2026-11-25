@@ -32,16 +32,14 @@ public class BillingJobs {
     private static final long LOCK_SEND_REMINDERS = 402_002L;
     private static final long LOCK_CLEANUP = 402_003L;
 
-    record Reminder(long userId, long subscriptionId, String name, int amount, int daysBefore,
-                    String paymentMethodName, LocalDate target) {
+    record Reminder(long userId, long subscriptionId, String name, int amount, int daysBefore, LocalDate target) {
 
         String title() {
             return reminderTitle(daysBefore, name);
         }
 
         String body() {
-            return String.format("%,d원이 %s으로 결제될 예정이에요.", amount,
-                    paymentMethodName != null ? paymentMethodName : "등록된 결제수단");
+            return String.format("%,d원이 결제될 예정이에요.", amount);
         }
     }
 
@@ -85,8 +83,8 @@ public class BillingJobs {
                               WHERE status = 'active' AND deleted_at IS NULL AND next_billing_date <= :today
                               FOR UPDATE
                             ), ins AS (
-                              INSERT INTO payments (subscription_id, user_id, category_id, payment_method_id, billing_date, amount)
-                              SELECT s.id, s.user_id, s.category_id, s.payment_method_id, s.next_billing_date, s.amount
+                              INSERT INTO payments (subscription_id, user_id, category_id, billing_date, amount)
+                              SELECT s.id, s.user_id, s.category_id, s.next_billing_date, s.amount
                               FROM subscriptions s JOIN due USING (id)
                               ON CONFLICT (subscription_id, billing_date) DO NOTHING
                             ), upd AS (
@@ -133,11 +131,10 @@ public class BillingJobs {
      */
     List<Reminder> insertDueReminders(LocalDate today, LocalTime now) {
         List<Reminder> candidates = jdbc.sql("""
-                        SELECT s.user_id, s.id AS sid, s.name, s.amount, d.days_before, pm.name AS pm_name
+                        SELECT s.user_id, s.id AS sid, s.name, s.amount, d.days_before
                         FROM subscriptions s
                         JOIN notification_settings ns ON ns.user_id = s.user_id AND ns.billing_alert_enabled
                         CROSS JOIN LATERAL unnest(COALESCE(s.notify_days_before, ns.days_before)) AS d(days_before)
-                        LEFT JOIN payment_methods pm ON pm.id = s.payment_method_id
                         WHERE s.status = 'active' AND s.deleted_at IS NULL AND s.notify_enabled
                           AND ns.notify_time <= CAST(:now AS time)
                           AND (s.next_billing_date - d.days_before = :today
@@ -148,7 +145,7 @@ public class BillingJobs {
                 .query((rs, n) -> {
                     int days = rs.getInt("days_before");
                     return new Reminder(rs.getLong("user_id"), rs.getLong("sid"), rs.getString("name"),
-                            rs.getInt("amount"), days, rs.getString("pm_name"), today.plusDays(days));
+                            rs.getInt("amount"), days, today.plusDays(days));
                 })
                 .list();
 

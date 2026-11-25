@@ -4,7 +4,6 @@ import com.example.loopcut.catalog.CatalogService.CategoryRef;
 import com.example.loopcut.common.BusinessException;
 import com.example.loopcut.common.Db;
 import com.example.loopcut.common.Kst;
-import com.example.loopcut.subscriptions.SubscriptionView.PaymentMethodRef;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -23,13 +22,12 @@ public class SubscriptionReader {
             SELECT s.id, s.service_id, s.name, s.plan_name, sv.logo_url, sv.brand_color,
                    c.id AS category_id, c.code AS category_code, c.name AS category_name,
                    s.amount, s.billing_cycle, s.first_billing_date, s.next_billing_date, s.status,
-                   s.unused_flagged_at, s.payment_method_id, pm.name AS pm_name, pm.last4 AS pm_last4,
+                   s.unused_flagged_at,
                    s.notify_enabled, s.notify_days_before, ns.days_before AS default_days_before,
                    s.memo, s.canceled_at, s.created_at
             FROM subscriptions s
             JOIN categories c ON c.id = s.category_id
             LEFT JOIN services sv ON sv.id = s.service_id
-            LEFT JOIN payment_methods pm ON pm.id = s.payment_method_id
             LEFT JOIN notification_settings ns ON ns.user_id = s.user_id
             WHERE s.user_id = :uid AND s.deleted_at IS NULL
             """;
@@ -70,10 +68,6 @@ public class SubscriptionReader {
         List<Integer> own = Db.intList(rs, "notify_days_before");
         List<Integer> fallback = Db.intList(rs, "default_days_before");
 
-        Long pmId = Db.longOrNull(rs, "payment_method_id");
-        PaymentMethodRef pm = pmId == null ? null
-                : new PaymentMethodRef(Db.id(pmId), rs.getString("pm_name"), rs.getString("pm_last4"));
-
         return new SubscriptionView(
                 Db.id(rs.getLong("id")),
                 Db.id(Db.longOrNull(rs, "service_id")),
@@ -91,7 +85,6 @@ public class SubscriptionReader {
                 next == null ? null : ChronoUnit.DAYS.between(today, next),
                 rs.getString("status"),
                 rs.getObject("unused_flagged_at") != null ? "check_unused" : "in_use",
-                pm,
                 rs.getBoolean("notify_enabled"),
                 own,
                 own != null ? own : fallback,

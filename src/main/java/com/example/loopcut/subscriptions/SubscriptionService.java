@@ -40,7 +40,6 @@ public class SubscriptionService {
             @NotBlank(message = "결제 주기를 선택해 주세요.")
             @Pattern(regexp = "monthly|yearly", message = "monthly 또는 yearly여야 해요.") String billingCycle,
             @NotNull(message = "첫 결제일을 입력해 주세요.") LocalDate firstBillingDate,
-            Long paymentMethodId,
             Boolean notifyEnabled,
             List<Integer> notifyDaysBefore,
             @Size(max = 2000, message = "메모는 2000자 이하로 입력해 주세요.") String memo) {
@@ -67,7 +66,7 @@ public class SubscriptionService {
     }
 
     /** 검증을 마친 신규 구독 값 (등록 / 다시 구독 공용) */
-    private record NewSub(Long serviceId, String name, String planName, long categoryId, Long paymentMethodId,
+    private record NewSub(Long serviceId, String name, String planName, long categoryId,
                           int amount, String cycle, LocalDate first, boolean notifyEnabled,
                           List<Integer> notifyDays, String memo) {
     }
@@ -171,27 +170,27 @@ public class SubscriptionService {
             throw BusinessException.validation(errors);
         }
         return insert(userId, new NewSub(r.serviceId(), r.name().trim(), blankToNull(r.planName()), r.categoryId(),
-                r.paymentMethodId(), r.amount(), r.billingCycle(), r.firstBillingDate(),
+                r.amount(), r.billingCycle(), r.firstBillingDate(),
                 r.notifyEnabled() == null || r.notifyEnabled(), days, blankToNull(r.memo())));
     }
 
     private long insert(long userId, NewSub s) {
-        checkReferences(userId, s.serviceId(), s.categoryId(), s.paymentMethodId());
+        checkReferences(s.serviceId(), s.categoryId());
         LocalDate today = Kst.today();
 
         // 오늘(포함)까지의 결제는 아래에서 payments로 채우므로, 다음 결제일은 오늘 "이후"
         long id = jdbc.sql("""
-                        INSERT INTO subscriptions (user_id, service_id, name, plan_name, category_id, payment_method_id,
+                        INSERT INTO subscriptions (user_id, service_id, name, plan_name, category_id,
                                                    amount, billing_cycle, first_billing_date, next_billing_date,
                                                    notify_enabled, notify_days_before, memo)
-                        VALUES (:uid, :serviceId, :name, :plan, :categoryId, :pmId, :amount,
+                        VALUES (:uid, :serviceId, :name, :plan, :categoryId, :amount,
                                 CAST(:cycle AS billing_cycle), :first,
                                 calc_next_billing_date(CAST(:first AS date), CAST(:cycle AS billing_cycle), CAST(:today AS date)),
                                 :notify, %s, :memo)
                         RETURNING id
                         """.formatted(Db.smallintArray(s.notifyDays())))
                 .param("uid", userId).param("serviceId", s.serviceId()).param("name", s.name())
-                .param("plan", s.planName()).param("categoryId", s.categoryId()).param("pmId", s.paymentMethodId())
+                .param("plan", s.planName()).param("categoryId", s.categoryId())
                 .param("amount", s.amount()).param("cycle", s.cycle()).param("first", s.first())
                 .param("today", today).param("notify", s.notifyEnabled()).param("memo", s.memo())
                 .query(Long.class).single();
@@ -204,9 +203,9 @@ public class SubscriptionService {
     private void backfillPayments(long userId, long subscriptionId, NewSub s, LocalDate today) {
         int step = "yearly".equals(s.cycle()) ? 12 : 1;
         jdbc.sql("""
-                        INSERT INTO payments (subscription_id, user_id, category_id, payment_method_id, billing_date, amount)
+                        INSERT INTO payments (subscription_id, user_id, category_id, billing_date, amount)
                         SELECT CAST(:sid AS bigint), CAST(:uid AS bigint), CAST(:cat AS smallint),
-                               CAST(:pm AS bigint), t.d, CAST(:amount AS integer)
+                               t.d, CAST(:amount AS integer)
                         FROM (SELECT (CAST(:first AS date) + make_interval(months => n * CAST(:step AS int)))::date AS d
                               FROM generate_series(0, 130) AS n) t
                         WHERE t.d <= CAST(:today AS date)
@@ -215,7 +214,7 @@ public class SubscriptionService {
                         ON CONFLICT (subscription_id, billing_date) DO NOTHING
                         """)
                 .param("sid", subscriptionId).param("uid", userId).param("cat", s.categoryId())
-                .param("pm", s.paymentMethodId()).param("amount", s.amount())
+                .param("amount", s.amount())
                 .param("first", s.first()).param("step", step).param("today", today)
                 .update();
     }
@@ -237,7 +236,6 @@ public class SubscriptionService {
         Integer amount = body.integer("amount", 0, 10_000_000);
         String cycle = body.oneOf("billingCycle", "monthly", "yearly");
         LocalDate first = body.date("firstBillingDate");
-        Long pmId = body.id("paymentMethodId");
         Boolean notifyEnabled = body.bool("notifyEnabled");
         List<Integer> days = body.intSet("notifyDaysBefore", NOTIFY_DAYS);
         String memo = body.string("memo", 0, 2000);
@@ -253,7 +251,7 @@ public class SubscriptionService {
         }
         body.check();
 
-        checkReferences(userId, serviceId, categoryId, pmId);
+        checkReferences(serviceId, categoryId);
 
         UpdateBuilder update = new UpdateBuilder("subscriptions");
         if (body.has("name")) {
@@ -270,9 +268,6 @@ public class SubscriptionService {
         }
         if (body.has("amount")) { // 다음 결제부터 적용. 과거 payments는 그대로
             update.set("amount", amount);
-        }
-        if (body.has("paymentMethodId")) {
-            update.set("payment_method_id", pmId);
         }
         if (body.has("notifyEnabled")) {
             update.set("notify_enabled", notifyEnabled);
@@ -337,7 +332,7 @@ public class SubscriptionService {
         body.check();
 
         var old = jdbc.sql("""
-                        SELECT status, service_id, name, plan_name, category_id, payment_method_id, amount, billing_cycle,
+                        SELECT status, service_id, name, plan_name, category_id, amount, billing_cycle,
                                notify_enabled, notify_days_before
                         FROM subscriptions WHERE id = :id AND user_id = :uid AND deleted_at IS NULL
                         """)
@@ -347,7 +342,7 @@ public class SubscriptionService {
                         throw BusinessException.conflict("SUBSCRIPTION_NOT_CANCELED", "해지한 구독만 다시 구독할 수 있어요.");
                     }
                     return new NewSub(Db.longOrNull(rs, "service_id"), rs.getString("name"), rs.getString("plan_name"),
-                            rs.getLong("category_id"), Db.longOrNull(rs, "payment_method_id"), rs.getInt("amount"),
+                            rs.getLong("category_id"), rs.getInt("amount"),
                             rs.getString("billing_cycle"), null, rs.getBoolean("notify_enabled"),
                             Db.intList(rs, "notify_days_before"), null);
                 })
@@ -355,7 +350,7 @@ public class SubscriptionService {
                 .orElseThrow(SubscriptionReader::notFound);
 
         return insert(userId, new NewSub(old.serviceId(), old.name(), old.planName(), old.categoryId(),
-                old.paymentMethodId(), amount != null ? amount : old.amount(), old.cycle(), first,
+                amount != null ? amount : old.amount(), old.cycle(), first,
                 old.notifyEnabled(), old.notifyDays(), null));
     }
 
@@ -401,19 +396,12 @@ public class SubscriptionService {
                 .orElseThrow(SubscriptionReader::notFound);
     }
 
-    private void checkReferences(long userId, Long serviceId, Long categoryId, Long paymentMethodId) {
+    private void checkReferences(Long serviceId, Long categoryId) {
         if (serviceId != null && count("SELECT count(*) FROM services WHERE id = :id AND is_active", serviceId) == 0) {
             throw BusinessException.notFound("SERVICE_NOT_FOUND", "서비스를 찾을 수 없어요.");
         }
         if (categoryId != null && count("SELECT count(*) FROM categories WHERE id = :id", categoryId) == 0) {
             throw BusinessException.notFound("CATEGORY_NOT_FOUND", "카테고리를 찾을 수 없어요.");
-        }
-        if (paymentMethodId != null) {
-            long n = jdbc.sql("SELECT count(*) FROM payment_methods WHERE id = :id AND user_id = :uid AND deleted_at IS NULL")
-                    .param("id", paymentMethodId).param("uid", userId).query(Long.class).single();
-            if (n == 0) {
-                throw BusinessException.notFound("PAYMENT_METHOD_NOT_FOUND", "결제수단을 찾을 수 없어요.");
-            }
         }
     }
 

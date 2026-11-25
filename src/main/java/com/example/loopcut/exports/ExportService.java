@@ -133,10 +133,9 @@ public class ExportService {
     private Table subscriptions(long userId) {
         List<List<Object>> rows = jdbc.sql("""
                         SELECT s.name, s.plan_name, c.name AS category, s.amount, s.billing_cycle,
-                               s.first_billing_date, s.next_billing_date, pm.name AS pm_name, s.notify_enabled, s.memo
+                               s.first_billing_date, s.next_billing_date, s.notify_enabled, s.memo
                         FROM subscriptions s
                         JOIN categories c ON c.id = s.category_id
-                        LEFT JOIN payment_methods pm ON pm.id = s.payment_method_id
                         WHERE s.user_id = :uid AND s.status = 'active' AND s.deleted_at IS NULL
                         ORDER BY s.next_billing_date, s.id
                         """)
@@ -144,11 +143,11 @@ public class ExportService {
                 .query((rs, n) -> row(rs.getString("name"), rs.getString("plan_name"), rs.getString("category"),
                         rs.getInt("amount"), cycle(rs.getString("billing_cycle")),
                         rs.getObject("first_billing_date", LocalDate.class),
-                        rs.getObject("next_billing_date", LocalDate.class), rs.getString("pm_name"),
+                        rs.getObject("next_billing_date", LocalDate.class),
                         rs.getBoolean("notify_enabled") ? "켜짐" : "꺼짐", rs.getString("memo")))
                 .list();
         return new Table("현재 구독", List.of("서비스명", "요금제", "카테고리", "금액", "결제 주기", "첫 결제일", "다음 결제일",
-                "결제수단", "알림", "메모"), rows);
+                "알림", "메모"), rows);
     }
 
     private Table history(long userId) {
@@ -174,11 +173,10 @@ public class ExportService {
 
     private Table payments(long userId, Params p) {
         StringBuilder sql = new StringBuilder("""
-                SELECT p.billing_date, s.name, c.name AS category, p.amount, pm.name AS pm_name
+                SELECT p.billing_date, s.name, c.name AS category, p.amount
                 FROM payments p
                 JOIN subscriptions s ON s.id = p.subscription_id
                 JOIN categories c ON c.id = p.category_id
-                LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id
                 WHERE p.user_id = :uid
                 """);
         Map<String, Object> params = new LinkedHashMap<>();
@@ -195,9 +193,9 @@ public class ExportService {
 
         List<List<Object>> rows = jdbc.sql(sql.toString()).params(params)
                 .query((rs, n) -> row(rs.getObject("billing_date", LocalDate.class), rs.getString("name"),
-                        rs.getString("category"), rs.getInt("amount"), rs.getString("pm_name")))
+                        rs.getString("category"), rs.getInt("amount")))
                 .list();
-        return new Table("결제 내역", List.of("결제일", "서비스명", "카테고리", "금액", "결제수단"), rows);
+        return new Table("결제 내역", List.of("결제일", "서비스명", "카테고리", "금액"), rows);
     }
 
     private static List<Object> row(Object... cells) {
