@@ -7,6 +7,7 @@ import com.example.loopcut.common.Db;
 import com.example.loopcut.common.Kst;
 import com.example.loopcut.common.UpdateBuilder;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -31,17 +32,27 @@ public class SubscriptionService {
     // ------------------------------------------------------------------ 요청 / 응답
 
     public record CreateRequest(
+            @Schema(description = "카탈로그에서 고른 서비스의 ID. 직접 입력한 구독이면 생략", example = "6")
             Long serviceId,
+            @Schema(description = "표시 이름 (1~100자). 카탈로그 서비스를 골랐다면 서비스 이름을 넣어요.", example = "Netflix")
             @NotBlank(message = "서비스 이름을 입력해 주세요.") @Size(max = 100, message = "이름은 100자 이하로 입력해 주세요.") String name,
+            @Schema(description = "요금제 이름 (선택, 50자 이하)", example = "스탠다드")
             @Size(max = 50, message = "요금제 이름은 50자 이하로 입력해 주세요.") String planName,
+            @Schema(description = "카테고리 ID (GET /categories의 id)", example = "1")
             @NotNull(message = "카테고리를 선택해 주세요.") Long categoryId,
+            @Schema(description = "결제 금액(원). 연 구독이면 1년치 금액", example = "13500")
             @NotNull(message = "금액을 입력해 주세요.") @Min(value = 0, message = "금액은 0원 이상이어야 해요.")
             @Max(value = 10_000_000, message = "금액은 1,000만원 이하로 입력해 주세요.") Integer amount,
+            @Schema(description = "결제 주기", allowableValues = {"monthly", "yearly"}, example = "monthly")
             @NotBlank(message = "결제 주기를 선택해 주세요.")
             @Pattern(regexp = "monthly|yearly", message = "monthly 또는 yearly여야 해요.") String billingCycle,
+            @Schema(description = "첫 결제일 (YYYY-MM-DD). 오늘 기준 과거 10년 ~ 미래 1년 이내. 매달 같은 날짜 결제의 기준이 돼요.", example = "2026-08-31")
             @NotNull(message = "첫 결제일을 입력해 주세요.") LocalDate firstBillingDate,
+            @Schema(description = "이 구독의 결제 알림 on/off. 생략하면 true", example = "true")
             Boolean notifyEnabled,
+            @Schema(description = "며칠 전에 알릴지 (0=당일, 1, 3, 7). null이면 마이 > 결제 알림 설정을 따라요.", example = "[3, 0]", nullable = true)
             List<Integer> notifyDaysBefore,
+            @Schema(description = "메모 (선택, 2000자 이하)", example = "가족 공유")
             @Size(max = 2000, message = "메모는 2000자 이하로 입력해 주세요.") String memo) {
     }
 

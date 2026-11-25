@@ -1,5 +1,6 @@
 package com.example.loopcut.support;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
  *
  * TODO: 문의 이메일 주소는 실제 운영 주소로 바꿔 주세요.
  */
+@Hidden // API 문서(Swagger)에는 표시하지 않는 HTML 페이지
 @Controller
 public class AccountDeletionPageController {
 
